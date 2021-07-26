@@ -1,2 +1,7 @@
 conf/env.json
 conf/scraper.json
+media/
+
+**/__pycache__/
+
+**/*.db

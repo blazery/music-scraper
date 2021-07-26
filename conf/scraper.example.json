@@ -1,0 +1,10 @@
+{
+    "youtube": [
+        {
+            "name": "",
+            "channel-id": "",
+            "max_age_in_days": 7,
+            "folder-overwrite": ""
+        }
+    ]
+}

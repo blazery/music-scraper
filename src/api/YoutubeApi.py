@@ -14,7 +14,7 @@ class YoutubeApi:
             developerKey=DEVELOPER_KEY)
         return
 
-    def loadChanelUploadIds(self, channel_ids: list[str]):
+    def loadChanelUploadIds(self, channel_ids):
 
         request = self.youtube.channels().list(
             part="contentDetails",
@@ -25,7 +25,7 @@ class YoutubeApi:
                      for i in response["items"]]
         return uploadIds
 
-    def loadPlaylistVideoInfo(self, list_ids: list[str]) -> list[list[VideoInfo]]:
+    def loadPlaylistVideoInfo(self, list_ids):
 
         itemsPerPlaylist = []
 

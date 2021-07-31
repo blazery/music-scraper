@@ -68,4 +68,4 @@ class VideoInfo:
             SET
                 has_been_loaded=1,
                 file_path=?
-            WHERE id=? """, path, id)
+            WHERE id=? """, [path, id])

@@ -2,6 +2,7 @@ from logging import debug
 import os
 import sys
 import platform
+import shutil
 import json
 import youtube_dl
 from datetime import datetime, timedelta
@@ -27,6 +28,22 @@ def loadConfigs():
         jsonFile.close()
 
     return (env_json, scraper_json)
+
+
+def downloadVideo(vid):
+    link = "https://www.youtube.com/watch?v={vid_id}".format(
+        vid_id=vid.video_id)
+    sys.stdout.write("<<< Downloading " +
+                     vid.title + " >>>\n")
+    ydl.download([link])
+
+
+def shouldDownloadVideo(vid, time_border):
+    if vid.published_at < time_border:
+        sys.stdout.write("<<< " +
+                         vid.title + " is too old >>>\n")
+        return False
+    return True
 
 
 env_json, scraper_json = loadConfigs()
@@ -83,38 +100,62 @@ if youtube_scrapers != None:
                     sys.stdout.write("\n")
                     sys.stdout.write("<<< Checking " + vid.title + " >>>\n")
 
-                    # break if already loaded
-                    existingItems = VideoInfo.getModelByIds(db, [vid.id])
-                    exists = len(existingItems) > 0
-                    if exists and existingItems[0]["has_been_loaded"]:
-                        sys.stdout.write("<<< " +
-                                         vid.title + " has been downloaded >>>\n")
-                        continue
-
-                    if vid.published_at < time_border:
-                        sys.stdout.write("<<< " +
-                                         vid.title + " is too old >>>\n")
-                        continue
-
                     videoPath = nameTemplateBase + templateLinker + vid.title + '.mp3'
-                    fileExists = os.path.exists(videoPath)
+                    existingItems = VideoInfo.getModelByIds(db, [vid.id])
+                    existsInDb = len(existingItems) > 0
+                    existsOnDisk = os.path.exists(videoPath)
+                    dbItem = existingItems[0] if existsInDb else None
+                    existsOnDiskExpectedLocation = existsInDb and os.path.exists(
+                        dbItem["file_path"])
 
-                    if not fileExists:
-                        link = "https://www.youtube.com/watch?v={vid_id}".format(
-                            vid_id=vid.video_id)
-                        sys.stdout.write("<<< Downloading " +
-                                         vid.title + " >>>\n")
-                        ydl.download([link])
-                    else:
-                        sys.stdout.write(
-                            vid.title + '.mp3' + " already exists on disk, skipping download")
+                    if existsInDb and not existsOnDisk:
+                        # download and update DB if downloading to an new location
+                        # otherwise it has been removed externally
 
-                    # set data, and name according to nameTemplate
-                    vid.file_path = videoPath
-                    vid.has_been_loaded = 1
+                        isSameLocation = videoPath == dbItem["file_path"]
 
-                    # insert into DB or update existing one
-                    if not exists:
+                        if existsOnDiskExpectedLocation and not isSameLocation:
+                            try:
+                                shutil.copyfile(dbItem["file_path"], videoPath)
+                                sys.stdout.write(
+                                    vid.title + '.mp3' + " copied to new location\n")
+
+                                vid.file_path = videoPath
+                                vid.has_been_loaded = 1
+                                VideoInfo.setModelLoaded(
+                                    db, vid.id, vid.file_path)
+                            except:
+                                sys.stdout.write(
+                                    vid.title + '.mp3' + " could not be copied\n")
+
+                        elif shouldDownloadVideo(vid, time_border) and not isSameLocation:
+                            downloadVideo(vid)
+
+                            vid.file_path = videoPath
+                            vid.has_been_loaded = 1
+                            VideoInfo.setModelLoaded(db, vid.id, vid.file_path)
+                        else:
+                            sys.stdout.write(
+                                vid.title + '.mp3' + " has been removed/rejected, skipping download\n")
+
+                    elif existsOnDisk and not existsInDb:
+                        # update DB
+                        vid.file_path = videoPath
+                        vid.has_been_loaded = 1
                         VideoInfo.insertModel(db, vid)
-                    else:
-                        VideoInfo.setModelLoaded(db, vid.id, vid.file_path)
+                        sys.stdout.write(
+                            vid.title + '.mp3' + " missing in DB, updating\n")
+
+                    elif existsOnDisk and existsOnDisk:
+                        # warn and do nothing
+                        sys.stdout.write(
+                            vid.title + '.mp3' + " already exists on disk, skipping download\n")
+
+                    elif not existsOnDisk and not existsInDb:
+                        # download to disk and instert into DB
+                        if shouldDownloadVideo(vid, time_border):
+                            downloadVideo(vid)
+
+                            vid.file_path = videoPath
+                            vid.has_been_loaded = 1
+                            VideoInfo.insertModel(db, vid)
